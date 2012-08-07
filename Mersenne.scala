@@ -61,6 +61,4 @@ def isMersennePrime(n: Int) = {
   (3 to n).foldLeft(4:BigInt){(s,_) => (s*s-2) % p} == 0
 }
 
-def fermatTest(p: BigInt)(implicit a: BigInt = 3) =
-  a.modPow(p-1, p) == BigInt(1)
 
