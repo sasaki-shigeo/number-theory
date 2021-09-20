@@ -98,6 +98,11 @@ object primes extends IndexedSeq[Int] {
     case _   => 1
   }
 
+  /*
+   * Disappointingly, sieving by bitwise sum approach is not so effective.
+   * The following code is stored into coffin.
+   */
+
   /**
    * In binary arithmetics, we can decide a given number is even or not
    * by checking the last bit is 0 or not.
