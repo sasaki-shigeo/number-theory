@@ -1,182 +1,483 @@
-import scala.math._
-import scala.collection.immutable._
+//
+// Prime Numbers
+//
 
-object primes extends IndexedSeq[Int] {
-  private val buf = new scala.collection.mutable.ArrayBuffer[Int]
-  buf ++= Seq(2,3,5,7,11,13,17,19)
+val primes_10 = Vector(2, 3, 5, 7)
+val primes_31 = Vector(2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31)
+val primes_100 = Vector(2, 3, 5, 7) ++ (
+  for {
+    p <- 11 until 100 by 2
+    if p % 3 != 0
+    if p % 5 != 0
+    if p % 7 != 0
+  } yield p
+)
 
-  def apply(ix: Int): Int = {
-    if (ix < buf.size)
-      buf(ix)
+def isqrt(n:Long): Int = {
+  assert(n >= 0)
+
+  var x0 = (n + 1) / 2
+  var x1 = (x0 + n / x0) / 2
+  while (x1 < x0) {
+    x0 = x1
+    x1 = (x0 + n / x0) / 2
+  }
+  x0.toInt
+}
+
+import scala.annotation.tailrec
+
+import scala.collection.SeqOps
+import scala.collection.AbstractSeq
+import scala.collection.View
+
+val primes_1000 = primes_31 ++ (
+  for { p <- 37 until 1000 by 2
+        if primes_31.drop(1).forall(p % _ != 0)
+  } yield p
+)
+
+lazy val primes_10000 = primes_100 ++ (
+  for { p <- 101 until 10000 by 2
+        if primes_100.drop(1).forall(p % _ != 0)
+  } yield p
+)
+
+lazy val primes_1000000 = primes_31 ++ (
+  for { p <- 1001 until 1000000 by 2
+        if primes_1000.view.drop(1).forall(p % _ != 0)
+  } yield p
+)
+
+def prime_?(n:Int):Boolean = {
+  (primes_10000 contains n) || primes_10000.forall(n % _ != 0)
+}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.StringBuilder
+import scala.collection.IndexedSeq
+
+trait Eratosthenes extends IndexedSeq[Boolean] {
+  override def toString() = {
+    val buf = new StringBuilder(this.length + this.length / 8)
+
+    for (k <- 0 until this.length) {
+      buf += (if (this(k)) '1' else '0')
+      if (k % 8 == 7) buf += ' '
+    }
+    buf.result()
+  }
+
+  def extendTo(n:Int):Unit
+
+  def prime_?(n:Long) = {
+    if (n <= 1) {
+      false
+    }
+    else if (n < this.length) {
+      this(n.toInt)
+    }
     else {
-      buf.sizeHint(ix + 1)
-
-      var n = buf.last + 2
-      while (buf.size - 1 < ix) {
-	if (prime_?(n))
-	  buf += n
-	n += 2
-      }	// buf.size - 1 == ix
-      buf(ix)
-    } 
+      (3 to math.sqrt(n.toDouble).toInt by 2).filter(this(_)).forall(n % _ != 0)
+    }
   }
 
-  private def prime_?(n: Int): Boolean = {
-    if (true && divisors_3_5_7_11_13_17_31(n) != 1) {
-      return false
+  class OddPrimeIterator(outer:Eratosthenes, start:Int = 3) extends Iterator[Int] {
+    private var ix = start
+    private var notEmpty = true
+    
+    def hasNext = notEmpty
+
+    def next() = {
+      val result = ix
+      do {
+        ix += 2
+        notEmpty &= (ix < outer.length)
+      } while (notEmpty && ! outer(ix))
+
+      result
     }
-    val limit = sqrt(n).toInt
-    // var i = 1   // buf(0) == 2, so the odd primes start from 3 == buf(1)
-    var i = 7
-    // remember buf take 7 = [2,3,5,7,11,13,17]
-    // and the check on these numbers is already done.
-    // non-trivial primes number (in the context of this code) starts from
-    // 19 == buf(7)
-    while (buf(i) <= limit) {
-      if (n % buf(i) == 0)
-	return false
-      i += 1
-    }
-    true
   }
 
-  override def hasDefiniteSize = false
+  def primes:Iterator[Int] = Iterator(2) ++ (new OddPrimeIterator(this))
+}
 
-  def length = Int.MaxValue    // exactly *infinite* if memory possible
+object eratosthenes extends Eratosthenes {
+  private var sz = 32
 
-  def intExpand(pows: Map[Int, Int]) = {
-    for { p <- pows.keys
-	  val n = pows(p)
-       } yield BigInt(p) pow n
-  } product
+  val bitmap = new ArrayBuffer[Int](sz/32 + 1)
+  clear()
 
-  def intFactor(positiveInteger: BigInt): Map[Int,Int] = {
-    require(positiveInteger > 0)
-    var factorMap = IntMap.empty[Int]
-    var n = positiveInteger
-    val it = this.iterator
-    var p = it.next
-    while (n >= p) {
-      if (n % p == 0) {
-	factorMap += p -> (factorMap.getOrElse(p, 0) + 1)
-	n /= p
+  def clear():Unit = {
+    bitmap.clear()
+    // ix:   0 1 2 3|4 5 6 7|8 9 10 11|12 13 14 15|
+    // bit:  1 2 4 8|1 2 4 8|1 2  4  8| 1  2  4  8|
+    // p:        4 8|  2   8|        8|    2      |
+    // hex:        C|      A|        8|          2|
+    //
+    // p:    17 19| 23|  | 29 31|
+    // bit:   2  8|  8| 0|  2  8|
+    // hex:      A|  8| 0|     A|
+    //
+    // As a result, the first content is 0xA08A_28AC
+    //
+    bitmap += 0xA08A_28AC
+    sz = 32
+  }
+
+  def length = sz
+
+  def apply(n:Int):Boolean = {
+    val high = n / 32
+    val low  = n % 32
+    
+    (bitmap(high) & (1 << low)) != 0
+  }
+
+  def update(n:Int, b:Boolean) = {
+    val high = n / 32
+    val low  = n % 32
+
+    if (b) {
+      bitmap(high) |= (1 << low)
+    }
+    else {
+      bitmap(high) &= ~(1 << low)
+    }
+  }
+
+  def extendTo(n:Int) = {
+    // The initial values of bitmap(2..end) are following:
+    // ix:  0 1 2 3|4 5 6 7|
+    // odd:   1   3|  5   7|
+    // bit:   2   8|  2   8|
+    // hex:       A|      A|
+    bitmap ++= (for (i <- bitmap.length until n/32 + 1) yield 0xAAAA_AAAA)
+    
+    for (p <- 3 to math.sqrt(n).toInt by 2) {
+      if (this(p)) {
+        for (n <- p*p until n by 2*p) {
+          this(n) = false
+        }
+      }
+    }
+
+    sz = n
+  }
+}
+
+object eratosthenes1 extends Eratosthenes {
+  val bitset = scala.collection.mutable.BitSet(2, 3, 5, 7)
+
+  def clear() = {
+    bitset.clear()
+    bitset += 2
+  }
+  def length = bitset.max + 2
+  def apply(p:Int) = bitset.apply(p)
+  def update(p:Int, bool:Boolean) = bitset.update(p, bool)
+  def extendTo(n:Int) = {
+    val start = bitset.max + 2
+    bitset ++= start to n by 2
+    for (p <- 3 to math.sqrt(n).toInt by 2; if this(p)) {
+      // nextComposite calculation:
+      // if start is divisible by p, return the start,
+      // otherwise return the next odd divisible by p.
+      // It is ceil[(start - p) / 2p] * 2p + p.
+      // Unfortunately, the behavior of JVM int division is simular to truncate,
+      // not ceil(_ / _).
+      // Instead of ceil(_ / _), we adopt floor((_ + .999...) / _).
+      // For example, let p = 5, start = 25, 27, ..., 25
+      // start == 25 => 25
+      // start == 27 => 35
+      // start == 29 => 35
+      // ...
+      // start == 35 => 35
+      // 
+      // start  +(p-1)  /(2p)  *(2p)   +p
+      // ----------------------------------
+      // 25     29      2      20      25
+      // 27     31      3      30      35
+      // ...
+      // 35     39      3      30      35 
+      //
+      val nextComposite = ((start + p - 1) / (2 * p)) * (2 * p) + p
+      for (k <- nextComposite to n by 2 * p) {
+        bitset -= k
+      }
+    }
+  }
+}
+
+object eratosthenes2 extends Eratosthenes {
+  private var sz = 0
+
+  // ix: 0 1 2 3 ... 31|32 33 ... 63|
+  //  n: 3 5 7 9 ... 65|67 ..... 129| 
+  val bitmap = new ArrayBuffer[Int]()
+  clear()
+
+  def length = sz
+
+  def apply(n:Int):Boolean = {
+    if (n < 0) {
+      throw new IndexOutOfBoundsException(n)
+    }
+    else if (n == 0 || n == 1) {
+      false
+    }
+    else if (n == 2) {
+      true
+    }
+    else {
+      val high = (n - 3) / 64
+      val low  = (n - 3) % 64 / 2
+    
+      (bitmap(high) & (1 << low)) != 0
+    }
+  }
+
+  def update(n:Int, b:Boolean) = {
+    if (n == 0 || n == 1 || n % 2 == 0) {
+      throw new ArrayIndexOutOfBoundsException(n)
+    }
+
+    val high = (n - 3) / 64
+    val low  = (n - 3) % 64 / 2
+
+    if (b) {
+      bitmap(high) |= (1 << low)
+    }
+    else {
+      bitmap(high) &= ~(1 << low)
+    }
+  }
+
+  def clear():Unit = {
+    sz = 9
+    bitmap.clear()
+    bitmap += 0xffff_ffff
+  }
+
+  def extendTo(n:Int) = {
+    val old_sz = sz
+    sz = n
+    bitmap.sizeHint((n-3)/64)
+    for (i <- bitmap.length until 1 + (n - 3)/64) {
+      bitmap += 0xffff_ffff
+    }
+    
+    for (p <- 3 to math.sqrt(n).toInt by 2) {
+      if (this(p)) {
+        for (n <- p*p until n by 2*p) {
+          this(n) = false
+        }
+      }
+    }
+  }
+
+  // def primes = 2 +: (for { p<-3 until sz by 2; if this(p) } yield p )
+}
+
+
+//
+// There are bugs.
+//
+object eratosthenes6 extends Eratosthenes {
+  private var sz = 0
+
+  // Indexes given by apply or update are 6n ± 1,
+  // for example,  5, 7,  11, 13,  17, 19,  23, 25,  29, 31,  35, 37,  ...
+  // ix: 0  1  2  3  4  5 ... 30 31| 32  33 ...  62  63|
+  //  n: 5  7 11 13 17 19 ... 95 97|101 103 ... 191 193|
+  //
+  //  n = 3 * ix + 5 if ix is even
+  //  n = 3 * ix + 4 if ix is odd
+  //
+  //  ix = (n - 4) / 3 if n % 6 == 1
+  //  ix = (n - 5) / 3 if n % 6 == 5 != 1
+  //  ix = (n - 4) / 3 everytime
+  //
+  
+
+  val bitmap = new ArrayBuffer[Int]((sz - 3) / 64 + 1)
+
+  clear()
+  
+  def length = sz
+
+  def apply(n:Int):Boolean = {
+    if (n == 3) {
+      true
+    }
+    else if (n == 0 || n == 1 || n % 2 == 0 || n % 3 == 0) {
+      false
+    }
+    else {
+      val ix   = (n - 4) / 3
+      val high = ix / 32
+      val low  = ix % 32
+
+      (bitmap(high) & (1 << low)) != 0
+    }
+  }
+
+  def update(n:Int, b:Boolean) = {
+    if (n == 0 || n == 1 || n % 2 == 0 || n % 3 == 0) {
+      // do nothing
+    }
+    else {
+      val ix   = (n - 4) / 3
+      val high = ix / 32
+      val low  = ix % 32
+
+      if (b) {
+        bitmap(high) |= (1 << low)
       }
       else {
-	p = it.next
+        bitmap(high) &= ~(1 << low)
       }
     }
-    return factorMap.withDefaultValue(0)
+  }
+  
+  def clear():Unit = {
+    sz = 25
+    bitmap.clear()
+    bitmap += 0xffff_ffff
   }
 
-  private val table8 = Array.tabulate[Int](256){
-    case 0   => 0			// error
-    case 255 => 255			// 3*5*17
-    case k if k % (3*5)  == 0 => 3*5
-    case k if k % (3*17) == 0 => 3*17
-    case k if k % (5*17) == 0 => 5*17
-    case k if k % 3      == 0 => 3
-    case k if k % 5      == 0 => 5
-    case k if k % 17     == 0 => 17
-    case _   => 1
-  }
+  def extendTo(n:Int) = {
+    val old_sz = sz
+    sz = n
 
-  /* does not check k is divisible by 3 since have done by table8 */
-  private val table10 = Array.tabulate[Int](1024){
-    case 0   => 0			// error
-    case k if k % (11*31) == 0 => 11*31
-    case k if k % 11      == 0 => 11
-    case k if k % 31      == 0 => 31
-    case _   => 1
-  }
-
-  /* does not check k is divisible by 3,5 since have done by table8 */
-  private val table12 = Array.tabulate[Int](4096){
-    case 0   => 0			// error
-    case k if k % (7*13)  == 0 => 7*13
-    case k if k % 7       == 0 => 7
-    case k if k % 13      == 0 => 13
-    case _   => 1
-  }
-
-  /*
-   * Disappointingly, sieving by bitwise sum approach is not so effective.
-   * The following code is stored into coffin.
-   */
-
-  /**
-   * In binary arithmetics, we can decide a given number is even or not
-   * by checking the last bit is 0 or not.
-   *
-   * The following equations suggest how to decide a given number can
-   * be divided by either 3, 5, 7, 11, 13, 17 or 31.
-   *
-   * 2^8-1  =  255 = 3 * 5 * 17
-   * 2^10-1 = 1023 = 3 * 11 * 31
-   * 2^12-1 = 4095 = 3 * 5 * 7 * 13
-   *
-   * 2^8-1 = 3 * 5 * 17 means byte-wise sum of an integer keeps
-   * moduli divided by 3, 5 and 17.
-   * For example, the byte-wise sum of 0xACE135 = (0xAB + 0xC1 + 0x35)
-   * = 0x1ce = 450 = 2 * 3^2 * 5^2.  So, 0xACE135 is divisible by 3 and 5.
-   * Make sure this fact!  0xACE135 = 11329845 = 3 * 5 * 257 * 293.
-   *
-   * Note: 0xACE135 is divisible by neither 3^2, 5^2 nor 2.
-   *
-   * So are 10bits-wise sum and 12bits-wise sum.
-   */
-  final def divisors_3_5_7_11_13_17_31(n: Int): Int = {
-    val bytewiseSum =
-      ((n & 0xff)
-       + ((n >>> 8) & 0xff)
-       + ((n >>> 16) & 0xff)
-       + ((n >>> 24) & 0x7f)
-      ) % 0xff
-
-    val bit10wiseSum =
-      ((n & 0x3ff)
-       + ((n >>> 10) & 0x3ff)
-       + ((n >>> 20) & 0x3ff)
-       + ((n >>> 30) & 0x1)
-      ) % 0x3ff
+    val ix = (n - 4) / 3
+    bitmap.sizeHint(ix / 32 + 1)
+    for (i <- bitmap.length until 1 +  ix / 32) {
+      bitmap += 0xffff_ffff
+    }
     
-    val bit12wiseSum =
-      ((n & 0xfff)
-       + ((n >>> 12) & 0xfff)
-       + ((n >>> 24) & 0x7f)
-       ) % 0xfff       
-
-    return table8(bytewiseSum) *
-           table10(bit10wiseSum) *
-           table12(bit12wiseSum)
+    for (p <- 5 to math.sqrt(n).toInt by 2) {
+      if (this(p)) {
+        for (n <- p*p until n by 2*p) {
+          this(n) = false
+        }
+      }
+    }
   }
 
-  def divisors_2_3_5_7_11_13_17_31(n: Int): Int =
-    divisors_3_5_7_11_13_17_31(n) * (2 - (n & 1))
+  // def primes = 2 +: 3+: (for { p<-5 until sz by 2; if this(p) } yield p )
+  override def primes:Iterator[Int] = Iterator(2, 3) ++ (new OddPrimeIterator(this, 5))
+}
 
-  def main(args: Array[String]) {
-    for (_ <- 1 to 1000000) {
-      val n = (1000000 * math.random).toInt
-      val divisors = divisors_2_3_5_7_11_13_17_31(n)
-      if ((n % 2 == 0 && divisors % 2 != 0) ||
-	  (n % 3 == 0 && divisors % 3 != 0) ||
-	  (n % 5 == 0 && divisors % 5 != 0) ||
-	  (n % 7 == 0 && divisors % 7 != 0) ||
-	  (n % 11 == 0 && divisors % 11 != 0) ||
-	  (n % 13 == 0 && divisors % 13 != 0) ||
-	  (n % 17 == 0 && divisors % 17 != 0) ||
-	  (n % 31 == 0 && divisors % 31 != 0)
-	) {
-	    printf("divisors miss!  n = %d, table = %d,  factors = %s%n", n, divisors, intFactor(n))
-	  }
+/**
+ * Returns integer factors in multiset (Map of Int -> Int) style
+ *
+ * Algorithm: division by the eratosthenes sieved primes.
+ *
+ * @param: An integer to be factored
+ * @returns: The multiset of primes represented by Map[Int, Int]
+ * Keys of the multiset: prime numbers
+ * Values of the multiset: degrees of the prime numbers
+ *
+ * For example, intFactor(14000) => Map(2->4, 5->3, 7->1) which means
+ * 2^4 * 5^3 * 7 = 7 * 2 * 2^3 * 5^3 = 7 * 2 * 10^3 = 14000
+ *
+ */
+def intFactor(m:Int):scala.collection.Map[Int,Int] = {
+  eratosthenes2.extendTo(1 + math.sqrt(m).toInt)
+
+  val table = scala.collection.mutable.LinkedHashMap[Int, Int]().withDefaultValue(0)
+  
+  var n  = m
+  val it = eratosthenes2.primes
+  var p = it.next()       // p == 2
+  while (n > 1) {
+    while (n % p == 0) {
+      table(p) += 1
+      n /= p
     }
-
-    println("Test done")
-
-    val start = System.currentTimeMillis
-    for (i <- 1000000 to 6000000 by 1000000) {
-      println(primes(i))
+    if (it.hasNext) {
+      p = it.next()
     }
-    val stop  = System.currentTimeMillis
-    printf("time: %s ms%n", stop - start)
+    else {   //  there are no prime candicates in TABLE.
+      table(n) = 1
+      return table.toMap
+    }
+  }
+  table.toMap
+}
+
+def intFactor(m:Int):Iterator[(Int,Int)] = {
+  eratosthenes2.extendTo(1 + math.sqrt(m).toInt)
+
+  new Iterator[(Int, Int)] {
+    val primes = eratosthenes2.primes
+    var n = if (m <= 1) 1 else m
+
+    def hasNext = (n != 1)
+    def next() = {
+      @tailrec def loop(p:Int):(Int,Int) = {
+        if (n % p == 0) {
+          var d = 0
+          do {
+            n /= p
+            d += 1
+          } while (n % p == 0)
+
+          p->d  // result
+        }
+        else if (primes.hasNext) {
+          loop(primes.next())
+        }
+        else {
+          val residual = n
+          n = 1
+
+          residual -> 1   // the last result
+        }
+      }
+
+      loop(primes.next())    // the initial value of primes.next() is 2.
+    }
+  }
+}
+
+
+def pollardRho(n:BigInt, x0:BigInt = 2:BigInt) = {
+  def f(x:BigInt) = (x * x + 1) % n
+
+  @tailrec def loop(x:BigInt, y:BigInt):Option[BigInt] = {
+    val g = (x - y) gcd n
+    if (g == n) {
+      None
+    }
+    else if (g == 1) {
+      loop(f(x), f(f(y)))
+    }
+    else {
+      Some(g)
+    }
+  }
+
+  loop(f(n), f(f(n)))
+}
+
+def IntFactor(n:BigInt) = new Iterator[BigInt] {
+  var m = n
+
+  def hasNext = (m != 1)
+
+  def next() = {
+    pollardRho(m) match {
+      case Some(d) => {
+        m /= d
+        d
+      }
+      case None    => {
+        val residual = m
+        m = 1
+        residual
+      }
+    }
   }
 }
