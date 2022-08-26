@@ -55,7 +55,10 @@ def prime_?(n:Int):Boolean = {
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.StringBuilder
+import scala.collection.mutable.BitSet
+import scala.collection.mutable.LinkedHashMap
 import scala.collection.IndexedSeq
+
 
 trait Eratosthenes extends IndexedSeq[Boolean] {
   override def toString() = {
@@ -167,7 +170,7 @@ object eratosthenes extends Eratosthenes {
 }
 
 object eratosthenes1 extends Eratosthenes {
-  val bitset = scala.collection.mutable.BitSet(2, 3, 5, 7)
+  val bitset = BitSet(2, 3, 5, 7)
 
   def clear() = {
     bitset.clear()
@@ -383,11 +386,10 @@ object eratosthenes6 extends Eratosthenes {
  * 2^4 * 5^3 * 7 = 7 * 2 * 2^3 * 5^3 = 7 * 2 * 10^3 = 14000
  *
  */
-def intFactor(m:Int):scala.collection.Map[Int,Int] = {
+def intFactor(m:Int):Map[Int, Int] = {
   eratosthenes2.extendTo(1 + math.sqrt(m).toInt)
 
-  val table = scala.collection.mutable.LinkedHashMap[Int, Int]().withDefaultValue(0)
-  
+  val table = LinkedHashMap[Int, Int]().withDefaultValue(0)
   var n  = m
   val it = eratosthenes2.primes
   var p = it.next()       // p == 2
