@@ -5,7 +5,7 @@
 
 import scala.annotation.tailrec
 
-object intmath {
+package object intmath {
     @inline def abs[T](n:T)(implicit num:Numeric[T]) = num.abs(n)
     def max[T](x:T, y:T)(implicit ord:Ordering[T]) = ord.max(x, y)
     def min[T](x:T, y:T)(implicit ord:Ordering[T]) = ord.min(x, y)
@@ -142,30 +142,33 @@ object intmath {
     }
 }
 
+import intmath._
+
 object intmathTest extends App {
     println("foo")
 
-    assert(intmath.gcd(99, 100) == 1)
-    assert(intmath.gcd(70, 100) == 10)
-    assert(intmath.gcd(1, 100) == 1)
-    assert(intmath.gcd(0, 100) == 100)
-    assert(intmath.gcd(0, 0) == 0)
-    assert(intmath.gcd(123456789, 987654321) == 9)
-    assert(intmath.gcd(123456789L, 987654321L) == 9)
-    assert(intmath.gcd(1234567890123456789L, 987654321987654321L) == 9)
+    assert(min())
+    assert(gcd(99, 100) == 1)
+    assert(gcd(70, 100) == 10)
+    assert(gcd(1, 100) == 1)
+    assert(gcd(0, 100) == 100)
+    assert(gcd(0, 0) == 0)
+    assert(gcd(123456789, 987654321) == 9)
+    assert(gcd(123456789L, 987654321L) == 9)
+    assert(gcd(1234567890123456789L, 987654321987654321L) == 9)
 
-    assert(intmath.isqrt(0) == 0)
-    assert(intmath.isqrt(1) == 1)
-    assert(intmath.isqrt(100) == 10)
-    assert(intmath.isqrt(10000) == 100)
-    assert(intmath.isqrt(100000000L) == 10000)
-    assert(intmath.isqrt(1000000000000L) == 1000000)
+    assert(isqrt(0) == 0)
+    assert(isqrt(1) == 1)
+    assert(isqrt(100) == 10)
+    assert(isqrt(10000) == 100)
+    assert(isqrt(100000000L) == 10000)
+    assert(isqrt(1000000000000L) == 1000000)
 
-    assert(intmath.icbrt(0) == 0)
-    assert(intmath.icbrt(1) == 1)
-    assert(intmath.icbrt(1000) == 10)
-    assert(intmath.icbrt(1000000) == 100)
-    assert(intmath.icbrt(1000000000L) == 1000)
+    assert(icbrt(0) == 0)
+    assert(icbrt(1) == 1)
+    assert(icbrt(1000) == 10)
+    assert(icbrt(1000000) == 100)
+    assert(icbrt(1000000000L) == 1000)
 
     for (i <- 1 to 17) {
         assert(intmath.getExponent(i) == math.getExponent(i.toFloat))
@@ -184,5 +187,3 @@ object intmathTest extends App {
     assert(intmath.getExponent(Int.MinValue) == math.getExponent(Int.MinValue.toDouble))
     assert(intmath.getExponent(Long.MinValue) == math.getExponent(Long.MinValue.toDouble))
 }
-
-intmathTest.main(Array[String]())
